@@ -8,6 +8,16 @@ set -uo pipefail
 SRV=http://10.0.2.2:8080
 trap 'curl -s -T /root/phase2.log $SRV/phase2.log >/dev/null; sync; systemctl poweroff' EXIT
 mount -o subvol=@ /dev/vda2 /mnt && mount -o subvol=@home /dev/vda2 /mnt/home && mount /dev/vda1 /mnt/boot/efi
+
+# re-test the FIXED shell.json step (runs as root, reads the root-only old-PC backup)
+curl -fsS $SRV/shelljson-step.sh -o /mnt/root/shelljson-step.sh
+arch-chroot /mnt bash /root/shelljson-step.sh
+W=$(arch-chroot /mnt python3 -c 'import json;print(json.load(open("/home/sayss/.config/caelestia/shell.json"))["services"]["weatherLocation"])')
+O=$(stat -c %U /mnt/home/sayss/.config/caelestia/shell.json)
+if [[ $W == 41.0,29.0 && $O == sayss ]]; then echo "PASS  fixed shell.json step (weather=$W owner=$O)"
+else echo "FAIL  fixed shell.json step (weather=$W owner=$O)"; fi
+rm -f /mnt/root/shelljson-step.sh
+
 echo "--- before enrolling:"; arch-chroot /mnt sbctl status
 arch-chroot /mnt sbctl enroll-keys --microsoft --yes-this-might-brick-my-machine
 echo "--- after enrolling:"; arch-chroot /mnt sbctl status

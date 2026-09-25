@@ -67,7 +67,8 @@ if [[ $PROFILE == desktop ]]; then
   # shell.json: keep the laptop's rice, set only the hardware keys to the desktop's values
   old=$K/oldlinux/home-overrides/.config/caelestia/shell.json
   [[ -f $old ]] || old=$C/overrides/desktop/shell.json.desktop-export
-  asuser python3 - "$H/.config/caelestia/shell.json" "$old" <<'PY'
+  # run as root: the old PC's copy sits in the root-only backup folder
+  python3 - "$H/.config/caelestia/shell.json" "$old" <<'PY'
 import json, sys
 path, oldp = sys.argv[1], sys.argv[2]
 d = json.load(open(path))
@@ -84,8 +85,9 @@ w = old.get("services", {}).get("weatherLocation")
 if w:
     d.setdefault("services", {})["weatherLocation"] = w
 json.dump(d, open(path, "w"), indent=4)
-print("  shell.json: battery widgets off, battery-only idle rule removed")
+print("  shell.json: battery widgets off, battery-only idle rule removed" + (f", weather from this PC ({w})" if w else ""))
 PY
+  chown "$U:$U" "$H/.config/caelestia/shell.json"
   # the us,tr keyboard watcher only makes sense with the laptop's two-layout setup
   if grep -qE 'kb_layout[[:space:]]*=[[:space:]]*"tr"' "$H/.config/caelestia/hypr-user.lua"; then
     rm -f "$H/.config/systemd/user/default.target.wants/kb-turkish.service"
@@ -188,6 +190,14 @@ step "Boot menu (GRUB) — Windows stays reachable"
 if (( HAS_NVIDIA )); then CMDLINE="loglevel=3 quiet splash nvidia_drm.modeset=1 zswap.enabled=0"
 else CMDLINE="loglevel=3 quiet splash zswap.enabled=0"; fi
 sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$CMDLINE\"|" /etc/default/grub
+# default-kernel pin: with linux AND linux-lts installed, grub-mkconfig sorts
+# "vmlinuz-linux-lts" above "vmlinuz-linux" and would boot LTS by default.
+# The laptop's kernel is the default; LTS stays under "Advanced options".
+if [[ -f /boot/vmlinuz-linux && -f /boot/vmlinuz-linux-lts ]]; then
+  sed -i '/^GRUB_TOP_LEVEL=/d' /etc/default/grub
+  echo 'GRUB_TOP_LEVEL="/boot/vmlinuz-linux"' >> /etc/default/grub
+fi
+# end default-kernel pin
 if [[ -f /boot/efi/EFI/Microsoft/Boot/bootmgfw.efi ]]; then
   cat > /etc/grub.d/40_custom <<EOF
 #!/bin/sh
